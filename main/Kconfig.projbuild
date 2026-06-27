@@ -1,0 +1,22 @@
+menu "WIFI Settings"
+    config WIFI_ENABLED
+        bool "Enable WIFI Module"
+        default y
+        help
+            Enables or disables the WIFI module in the system. config MY_FEATURE_ENABLED
+
+    config WIFI_SSID
+        string "WIFI SSID"
+        default "MyWiFiNetwork"
+        depends on WIFI_ENABLED
+        help
+            Set the SSID (name) of the WIFI network to connect to.
+
+    config WIFI_PASSWORD
+        string "WIFI Password"
+        default "MyWiFiPassword"
+        depends on WIFI_ENABLED
+        help
+            Set the password for the WIFI network.
+
+endmenu
