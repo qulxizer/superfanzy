@@ -1,10 +1,9 @@
 // Loading WiFi credentials from sdkconfig
 #include "driver/gpio.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "esp_wifi.h"
 #include "nvs_flash.h"
+#include "scan.h"
 #include "soc/gpio_num.h"
+#include "util.h"
 
 #define SSID CONFIG_WIFI_SSID
 #define PASSWD CONFIG_WIFI_PASSWORD
@@ -33,56 +32,6 @@ static const char *TAG = "scan";
 //   }
 // }
 
-static void fast_scan(void) {
-  // 2. Initialize Netif and Event Loop
-  ESP_ERROR_CHECK(esp_netif_init());
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
-  esp_netif_create_default_wifi_sta();
-
-  // 3. Initialize Wi-Fi with Default Configurations
-  wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-  ESP_ERROR_CHECK(esp_wifi_start());
-
-  // 4. Configure Scan Parameters (Optional: NULL uses defaults)
-  wifi_scan_config_t scan_config = {.ssid = NULL,
-                                    .bssid = NULL,
-                                    .channel = 0,
-                                    .show_hidden = true,
-                                    .scan_type = WIFI_SCAN_TYPE_ACTIVE};
-
-  // 5. Start Scan (True blocks execution until scan completes)
-  ESP_LOGI(TAG, "Starting Wi-Fi scan...");
-  ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, true));
-
-  // 6. Allocate Memory and Fetch AP Records
-  uint16_t ap_count = 0;
-  ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-
-  if (ap_count > MAX_SCAN_RECORDS) {
-    ap_count = MAX_SCAN_RECORDS;
-  }
-
-  wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
-  if (ap_records == NULL) {
-    ESP_LOGE(TAG, "Failed to allocate memory for AP records");
-    return;
-  }
-
-  ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_records));
-
-  // 7. Loop Through and Print Discovered AP Names
-  ESP_LOGI(TAG, "Found %d Access Points:", ap_count);
-  for (int i = 0; i < ap_count; i++) {
-    ESP_LOGI(TAG, "SSID: %-32s | RSSI: %d dBm | Channel: %d",
-             ap_records[i].ssid, ap_records[i].rssi, ap_records[i].primary);
-  }
-
-  // Clean up allocated buffer
-  free(ap_records);
-}
-
 int app_main(void) {
   // Configure GPIO2 as output for LED control
   gpio_config_t io_conf_out = {.pin_bit_mask = (1ULL << GPIO_NUM_2),
@@ -102,7 +51,12 @@ int app_main(void) {
     ret = nvs_flash_init();
   }
   ESP_ERROR_CHECK(ret);
-  fast_scan();
+  wifi_ap_record_t *ap_records = NULL;
+
+  size_t ap_count = fast_scan(MAX_SCAN_RECORDS, TAG, &ap_records);
+  log_records(TAG, ap_records, ap_count);
+
+  free(ap_records);
 
   return 0;
 }
