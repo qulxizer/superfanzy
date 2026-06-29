@@ -1,0 +1,15 @@
+menu "SF MQTT Settings"
+    config SF_MQTT_ENABLED
+        bool "SF Enable MQTT Module"
+        default y
+        help
+            Enables or disables the MQTT module in the system.
+
+    config SF_MQTT_BROKER_URI
+        string "SF MQTT Broker URL"
+        depends on SF_MQTT_ENABLED
+        help
+            MQTT broker URI to connect to.
+
+
+endmenu

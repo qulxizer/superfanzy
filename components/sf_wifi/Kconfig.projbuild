@@ -1,4 +1,4 @@
-menu "WIFI Settings"
+menu "SF WIFI Settings"
     config WIFI_ENABLED
         bool "Enable WIFI Module"
         default y

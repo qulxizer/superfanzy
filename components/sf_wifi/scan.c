@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_wifi_default.h"
+#include "util.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -29,22 +30,15 @@
  * @return Number of Access Points found and allocated, or 0 if an error occurs.
  */
 
-uint16_t fast_scan(int max_scan_records, const char *tag,
-                   wifi_ap_record_t **ret_ap_records) {
+uint16_t sf_fast_scan(int max_scan_records, const char *tag,
+                      wifi_ap_record_t **ret_ap_records) {
 
   if (ret_ap_records == NULL) {
     return 0;
   }
-  // Initialize Netif and Event Loop
-  ESP_ERROR_CHECK(esp_netif_init());
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
-  esp_netif_create_default_wifi_sta();
 
   // Initialize Wi-Fi with Default Configurations
-  wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-  ESP_ERROR_CHECK(esp_wifi_start());
+  sf_init_wifi(WIFI_MODE_STA);
 
   // Configure Scan Parameters (Optional: NULL uses defaults)
   wifi_scan_config_t scan_config = {.ssid = NULL,

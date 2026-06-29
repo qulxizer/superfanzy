@@ -1,4 +1,6 @@
 // Loading WiFi credentials from sdkconfig
+#include "client.h"
+#include "connect.h"
 #include "driver/gpio.h"
 #include "nvs_flash.h"
 #include "scan.h"
@@ -16,21 +18,6 @@
 #define RSSI_5G_ADJUSTMENT 0
 
 #define MAX_SCAN_RECORDS 20
-static const char *TAG = "scan";
-
-// static void event_handler(void *arg, esp_event_base_t event_base,
-//                           int32_t event_id, void *event_data) {
-//   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-//     esp_wifi_connect();
-//   } else if (event_base == WIFI_EVENT &&
-//              event_id == WIFI_EVENT_STA_DISCONNECTED) {
-//     esp_wifi_connect();
-//   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-//     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-//     gpio_set_level(GPIO_NUM_2, 1);
-//     ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-//   }
-// }
 
 int app_main(void) {
   // Configure GPIO2 as output for LED control
@@ -51,12 +38,15 @@ int app_main(void) {
     ret = nvs_flash_init();
   }
   ESP_ERROR_CHECK(ret);
-  wifi_ap_record_t *ap_records = NULL;
 
-  size_t ap_count = fast_scan(MAX_SCAN_RECORDS, TAG, &ap_records);
-  log_records(TAG, ap_records, ap_count);
-
-  free(ap_records);
+  sf_wifi_init_netif();
+  sf_init_wifi(WIFI_MODE_STA);
+  // wifi_ap_record_t *ap_records = NULL;
+  // size_t ap_count = sf_fast_scan(MAX_SCAN_RECORDS, TAG, &ap_records);
+  // sf_log_records(TAG, ap_records, ap_count);
+  // free(ap_records);
+  sf_connect_to_wifi(SSID, PASSWD);
+  sf_mqtt_client_start();
 
   return 0;
 }
