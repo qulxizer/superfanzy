@@ -2,6 +2,7 @@
 #include "client.h"
 #include "connect.h"
 #include "driver/gpio.h"
+#include "esp_log.h"
 #include "nvs_flash.h"
 #include "scan.h"
 #include "soc/gpio_num.h"
@@ -18,6 +19,18 @@
 #define RSSI_5G_ADJUSTMENT 0
 
 #define MAX_SCAN_RECORDS 20
+
+void my_mqtt_message_handler(const char *topic, const char *payload) {
+  ESP_LOGI("APP", "Received on %s: %s", topic, payload);
+
+  if (strcmp(topic, "/fanctl/led") == 0) {
+    if (strcmp(payload, "ON") == 0) {
+      gpio_set_level(GPIO_NUM_2, 1);
+    } else if (strcmp(payload, "OFF") == 0) {
+      gpio_set_level(GPIO_NUM_2, 0);
+    }
+  }
+}
 
 int app_main(void) {
   // Configure GPIO2 as output for LED control
@@ -46,7 +59,7 @@ int app_main(void) {
   // sf_log_records(TAG, ap_records, ap_count);
   // free(ap_records);
   sf_connect_to_wifi(SSID, PASSWD);
-  sf_mqtt_client_start();
+  sf_mqtt_start();
 
   return 0;
 }

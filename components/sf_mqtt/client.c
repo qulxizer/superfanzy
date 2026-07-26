@@ -1,62 +1,29 @@
-#include "cjson/cJSON.h"
+#include "cJSON.h"
 #include "esp_log.h"
 
+#include "esp_mac.h"
+#include "esp_wifi.h"
+#include "esp_wifi_types_generic.h"
 #include "mqtt_client.h"
 #include "sdkconfig.h"
 
 #include "client.h"
 
-#include <stdlib.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "esp_log.h"
 #include "mqtt_client.h"
 
-static const char *TAG = "SF_MQTT:";
+static const char *TAG = "SF_MQTT";
 
 static esp_mqtt_client_handle_t s_client;
-static sf_mqtt_msg_cb_t s_msg_cb;
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
-                               int32_t event_id, void *event_data) {
-  esp_mqtt_event_handle_t event = event_data;
+                               int32_t event_id, void *event_data);
 
-  switch (event_id) {
-  case MQTT_EVENT_CONNECTED:
-    ESP_LOGI(TAG, "Connected");
-    break;
-
-  case MQTT_EVENT_DISCONNECTED:
-    ESP_LOGW(TAG, "Disconnected");
-    break;
-
-  case MQTT_EVENT_DATA: {
-    char *topic = strndup(event->topic, event->topic_len);
-    char *payload = strndup(event->data, event->data_len);
-
-    if (!topic || !payload) {
-      free(topic);
-      free(payload);
-      return;
-    }
-
-    if (s_msg_cb) {
-      s_msg_cb(topic, payload);
-    }
-
-    free(topic);
-    free(payload);
-    break;
-  }
-
-  default:
-    break;
-  }
-}
-
-void sf_mqtt_start(sf_mqtt_msg_cb_t msg_cb) {
-  s_msg_cb = msg_cb;
-
+void sf_mqtt_start(void) {
   esp_mqtt_client_config_t config = {
       .broker.address.uri = CONFIG_SF_MQTT_BROKER_URI,
   };
@@ -91,6 +58,66 @@ static void log_error_if_nonzero(const char *message, int error_code) {
     ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
   }
 }
+static void get_esp_serial_string(char *serial_str, size_t str_size) {
+  uint8_t mac[6];
+
+  if (esp_efuse_mac_get_default(mac) == ESP_OK) {
+    // Format as uppercase hex digits separated by colons
+    snprintf(serial_str, str_size, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0],
+             mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    ESP_LOGI(TAG, "ESP Serial Number (MAC): %s", serial_str);
+  } else {
+    ESP_LOGE(TAG, "Failed to read default MAC address");
+  }
+}
+
+uint32_t get_uptime_seconds(void) {
+  // Get total ticks elapsed since boot
+  TickType_t total_ticks = xTaskGetTickCount();
+
+  // Convert ticks to seconds
+  return (uint32_t)(total_ticks / configTICK_RATE_HZ);
+}
+
+static void sf_mqtt_publisher_task(void *pvParameters) {
+  ESP_LOGI(TAG, "MQTT_PUB_TASK");
+  while (1) {
+    if (s_client != NULL) {
+      cJSON *obj = cJSON_CreateObject();
+      if (obj == NULL) {
+        ESP_LOGE(TAG, "Failed to create json object");
+        continue;
+        ;
+      }
+      char base_mac[18];
+      get_esp_serial_string(base_mac, sizeof(base_mac));
+      cJSON_AddStringToObject(obj, "device_mac", base_mac);
+      cJSON_AddStringToObject(obj, "status", "online");
+      cJSON_AddNumberToObject(obj, "uptime_s", get_uptime_seconds());
+
+      wifi_ap_record_t ap_info;
+      esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+      if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get AP info: %s", esp_err_to_name(err));
+        continue;
+      }
+
+      char ssid_str[33];
+      snprintf(ssid_str, sizeof(ssid_str), "%s", (char *)ap_info.ssid);
+      cJSON_AddStringToObject(obj, "wifi_ssid", (char *)ssid_str);
+      char *printed = cJSON_PrintUnformatted(obj);
+      cJSON_Delete(obj);
+      if (printed == NULL) {
+        ESP_LOGE(TAG, "Failed to print cjson object");
+        continue;
+      }
+
+      sf_mqtt_publish("/fanctl/status", printed, 1, false);
+    }
+    vTaskDelay(pdMS_TO_TICKS(5000));
+  }
+}
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                                int32_t event_id, void *event_data) {
@@ -103,9 +130,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   switch ((esp_mqtt_event_id_t)event_id) {
   case MQTT_EVENT_CONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-    msg_id =
-        esp_mqtt_client_publish(client, "fanctl/status", "data_3", 0, 1, 0);
-    ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+    xTaskCreate(sf_mqtt_publisher_task, "mqtt_pub_task", 3072, NULL, 5, NULL);
+    // msg_id =
+    //     esp_mqtt_client_publish(client, "/fanctl/status", "data_3", 0, 1, 0);
 
     // esp_mqtt_topic_t topics[] = {
     //     (esp_mqtt_topic_t){.filter = "/fans/control/12/PWM", .qos = 0},
@@ -153,14 +180,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   }
 }
 
-void sf_mqtt_client_start(void) {
-  esp_mqtt_client_config_t mqtt_cfg = {.broker.address.uri =
-                                           CONFIG_SF_MQTT_BROKER_URI
-
-  };
-
-  esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
-  esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler,
-                                 NULL);
-  esp_mqtt_client_start(client);
-}
+// void sf_mqtt_client_start(void) {
+//   esp_mqtt_client_config_t mqtt_cfg = {.broker.address.uri =
+//                                            CONFIG_SF_MQTT_BROKER_URI
+//
+//   };
+//
+//   esp_mqtt_client_handle_t s_client = esp_mqtt_client_init(&mqtt_cfg);
+//   esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID,
+//   mqtt_event_handler,
+//                                  NULL);
+//   esp_mqtt_client_start(s_client);
+// }

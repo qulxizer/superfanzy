@@ -2,9 +2,7 @@
 #define SF_MQTT_CLIENT
 #include <stdbool.h>
 
-typedef void (*sf_mqtt_msg_cb_t)(const char *topic, const char *payload);
-
-void sf_mqtt_start(sf_mqtt_msg_cb_t msg_cb);
+void sf_mqtt_start(void);
 
 int sf_mqtt_subscribe(const char *topic, int qos);
 
