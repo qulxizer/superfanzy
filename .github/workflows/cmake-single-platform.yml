@@ -7,6 +7,9 @@ on:
     branches: [ main, ci ]
   workflow_dispatch: # Allows you to trigger this build manually
 
+  release:
+    types: [published]
+
 jobs:
   build:
     runs-on: ubuntu-latest
