@@ -27,3 +27,9 @@ jobs:
         target: esp32s2
         path: ''
 
+    - name: Build with CMake
+      uses: nick-invision/retry@v2
+      with:
+        timeout_minutes: 30
+        max_attempts: 3
+        command: idf.py build
