@@ -3,6 +3,7 @@
 #include "connect.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "fans.h"
 #include "nvs_flash.h"
 #include "scan.h"
 #include "soc/gpio_num.h"
@@ -54,6 +55,7 @@ int app_main(void) {
 
   sf_wifi_init_netif();
   sf_init_wifi(WIFI_MODE_STA);
+  sf_fans_init();
   // wifi_ap_record_t *ap_records = NULL;
   // size_t ap_count = sf_fast_scan(MAX_SCAN_RECORDS, TAG, &ap_records);
   // sf_log_records(TAG, ap_records, ap_count);

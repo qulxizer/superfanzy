@@ -1,5 +1,6 @@
 #include "cJSON.h"
 #include "esp_log.h"
+#include "fans.h"
 
 #include "esp_mac.h"
 #include "esp_wifi.h"
@@ -11,6 +12,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -66,7 +68,7 @@ static void get_esp_serial_string(char *serial_str, size_t str_size) {
     snprintf(serial_str, str_size, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0],
              mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-    ESP_LOGI(TAG, "ESP Serial Number (MAC): %s", serial_str);
+    // ESP_LOGI(TAG, "ESP Serial Number (MAC): %s", serial_str);
   } else {
     ESP_LOGE(TAG, "Failed to read default MAC address");
   }
@@ -84,6 +86,7 @@ static void sf_mqtt_publisher_task(void *pvParameters) {
   ESP_LOGI(TAG, "MQTT_PUB_TASK");
   while (1) {
     if (s_client != NULL) {
+      vTaskDelay(pdMS_TO_TICKS(5000));
       cJSON *obj = cJSON_CreateObject();
       if (obj == NULL) {
         ESP_LOGE(TAG, "Failed to create json object");
@@ -112,10 +115,9 @@ static void sf_mqtt_publisher_task(void *pvParameters) {
         ESP_LOGE(TAG, "Failed to print cjson object");
         continue;
       }
-
       sf_mqtt_publish("/fanctl/status", printed, 1, false);
+      cJSON_free(printed);
     }
-    vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
 
@@ -131,14 +133,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_CONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
     xTaskCreate(sf_mqtt_publisher_task, "mqtt_pub_task", 3072, NULL, 5, NULL);
-    // msg_id =
-    //     esp_mqtt_client_publish(client, "/fanctl/status", "data_3", 0, 1, 0);
 
-    // esp_mqtt_topic_t topics[] = {
-    //     (esp_mqtt_topic_t){.filter = "/fans/control/12/PWM", .qos = 0},
-    //     (esp_mqtt_topic_t){.filter = "/topic/qos0", .qos = 0},
-    // };
-    // msg_id = esp_mqtt_client_subscribe_multiple(client, topics, 0);
+    esp_mqtt_topic_t topics[] = {
+        (esp_mqtt_topic_t){.filter = "/fanctl/control/fan/1/PWM", .qos = 0},
+        (esp_mqtt_topic_t){.filter = "/fanctl/control/fan/2/PWM", .qos = 0},
+        (esp_mqtt_topic_t){.filter = "/fanctl/control/fan/3/PWM", .qos = 0},
+        (esp_mqtt_topic_t){.filter = "/fanctl/control/fan/4/PWM", .qos = 0},
+    };
+    msg_id = esp_mqtt_client_subscribe_multiple(
+        client, topics, sizeof(topics) / sizeof(topics[0]));
     break;
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -160,6 +163,24 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     ESP_LOGI(TAG, "MQTT_EVENT_DATA");
     printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
     printf("DATA=%.*s\r\n", event->data_len, event->data);
+    sf_fan_t fan = {0};
+    sf_fans_get_fan(event->topic, event->topic_len, &fan);
+    // Cap the length just in case so we don't overflow the buffer
+    int len = event->data_len;
+    if (len > 15)
+      len = 15;
+
+    // Create a temporary buffer and copy the data
+    char data_str[16];
+    memcpy(data_str, event->data, len);
+    data_str[len] = '\0'; // Null-terminate it manually
+
+    int duty = atoi(data_str);
+
+    const int max_duty = (1 << fan.tim.ledc_duty_res) - 1;
+    if (duty > max_duty)
+      duty = 1023;
+    sf_fans_set_duty(&fan, duty);
     break;
   case MQTT_EVENT_ERROR:
     ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
