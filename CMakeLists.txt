@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20.2)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 list(APPEND EXTRA_COMPONENT_DIRS components)
+set(COMPONENT_MANAGER_IGNORE_DEPENDENCIES ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 idf_build_set_property(MINIMAL_BUILD ON)
