@@ -17,6 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install ESP-IDF
+        env:
+            IDF_PYTHON_CHECK_CONSTRAINTS: no
         uses: espressif/install-esp-idf-action@v1
         with:
           version: "v4.4"
