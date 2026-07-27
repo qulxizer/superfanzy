@@ -5,14 +5,17 @@ on:
     branches: [ main, ci ]
   pull_request:
     branches: [ main, ci ]
-  workflow_dispatch: # Allows you to trigger this build manually
-
+  workflow_dispatch: # Run it whenever you want manually
   release:
     types: [published]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Just add whatever chips you want here
+        target: [esp32s2, esp32s3, esp32] 
 
     steps:
     - name: Checkout repo
@@ -24,6 +27,31 @@ jobs:
       uses: espressif/esp-idf-ci-action@v1
       with:
         esp_idf_version: v6.0.2
-        target: esp32s2
+        target: ${{ matrix.target }}
         path: ''
+        
+    - name: Zip up bins
+      uses: actions/upload-artifact@v4
+      with:
+        name: firmware-${{ matrix.target }}
+        path: |
+          build/*.bin
+          build/bootloader/*.bin
+          build/partition_table/*.bin
 
+  release-bins:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only run this if you clicked 'Publish Release'
+    if: github.event_name == 'release' 
+    steps:
+      - name: Download all built bins
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.bin
